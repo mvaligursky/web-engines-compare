@@ -13,8 +13,9 @@
         <p class="subtitle">
             Benchmarks comparing <a href="https://playcanvas.com">PlayCanvas</a>,
             <a href="https://threejs.org">Three.js</a> and
-            <a href="https://www.babylonjs.com">Babylon.js</a> — including different
-            versions of the same engine, so optimizations can be measured release to release.
+            <a href="https://www.babylonjs.com">Babylon.js</a> — across engine versions
+            <em>and</em> graphics backends (WebGL2 and WebGPU), so optimizations can be
+            measured release to release.
         </p>
 
         <h2>Tests</h2>
@@ -23,10 +24,11 @@
                 <a class="card" href="./tests/draw-calls/">
                     <span class="card-title">Draw Call Performance</span>
                     <span class="card-desc">
-                        CPU submission cost: a dense grid of 10K–20K tiny cubes, each its own
+                        CPU submission cost: a dense grid of 1K–20K tiny cubes, each its own
                         draw call, with a configurable number of unique PBR materials
                         (1–1000) at three complexity levels. Identical deterministic scene
-                        and camera in every engine; MSAA off, pixel ratio 1.
+                        and camera in every engine, on WebGL2 and WebGPU, submitted unsorted
+                        in the same order everywhere; MSAA off, pixel ratio 1.
                     </span>
                 </a>
             </li>

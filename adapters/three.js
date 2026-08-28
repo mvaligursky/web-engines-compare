@@ -5,7 +5,8 @@ import {
 } from '../lib/scene-spec.js';
 
 /**
- * @param {object} THREE - The three.js module namespace.
+ * @param {object} THREE - The three.js module namespace (three.module.js for
+ * WebGL2, three.webgpu.js for WebGPU — the latter re-exports the whole core).
  * @returns {object} Adapter implementing the benchmark adapter interface.
  */
 export function createThreeAdapter(THREE) {
@@ -21,6 +22,8 @@ export function createThreeAdapter(THREE) {
     const textures = [];
     let rafId = 0;
     let running = false;
+    /** @type {(() => void)|null} */
+    let loopFn = null;
 
     const makeTexture = (data, srgb) => {
         const tex = new THREE.DataTexture(data, TEXTURE_SIZE, TEXTURE_SIZE, THREE.RGBAFormat);
@@ -42,10 +45,32 @@ export function createThreeAdapter(THREE) {
     };
 
     return {
-        async init({ canvas, materialCount, complexity }) {
-            renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
+        async init({ canvas, backend, materialCount, complexity, drawOrder }) {
+            if (backend === 'webgpu') {
+                if (!THREE.WebGPURenderer) {
+                    throw new Error('This three build has no WebGPURenderer (use the three.webgpu.js build)');
+                }
+                renderer = new THREE.WebGPURenderer({ canvas, antialias: false, forceWebGL: false });
+                await renderer.init();
+                // forceWebGL:false only *prefers* WebGPU; confirm we did not get
+                // the WebGL fallback backend, which would duplicate the GL column.
+                const backendName = renderer.backend?.constructor?.name || '?';
+                if (!backendName.includes('WebGPU')) {
+                    throw new Error(`Requested webgpu but three chose '${backendName}'`);
+                }
+            } else {
+                renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
+            }
             renderer.setPixelRatio(1);
             renderer.setSize(window.innerWidth, window.innerHeight, false);
+
+            // 'default' leaves the renderer's own sort alone: WebGLRenderer groups by
+            // material.id, the WebGPU renderer sorts by depth instead.
+            if (drawOrder === 'creation') {
+                // skips both the sort and the per-object depth projection;
+                // order becomes scene-graph traversal order
+                renderer.sortObjects = false;
+            }
 
             scene = new THREE.Scene();
             // spec colors are sRGB; three numeric color components default to linear
@@ -97,16 +122,33 @@ export function createThreeAdapter(THREE) {
             }
         },
 
+        setPaused(paused) {
+            if (paused) {
+                running = false;
+                cancelAnimationFrame(rafId);
+            } else if (!running && loopFn) {
+                running = true;
+                rafId = requestAnimationFrame(loopFn);
+            }
+        },
+
         start(onFrame) {
             running = true;
             const loop = () => {
                 if (!running) return;
                 rafId = requestAnimationFrame(loop);
+                // render() covers world-matrix update, frustum culling, render-list
+                // build + sort and draw submission — three has no separate update step.
                 const t0 = performance.now();
                 renderer.render(scene, camera);
                 onFrame(performance.now() - t0);
             };
+            loopFn = loop;
             rafId = requestAnimationFrame(loop);
+        },
+
+        getDrawCalls() {
+            return renderer.info?.render?.drawCalls ?? -1;
         },
 
         resize() {
@@ -115,6 +157,13 @@ export function createThreeAdapter(THREE) {
         },
 
         getInfo() {
+            if (renderer.backend) {
+                // three's WebGPUBackend keeps only the device, not the adapter
+                const info = renderer.backend.device?.adapterInfo ?? renderer.backend.adapter?.info;
+                return info ?
+                    `vendor: ${info.vendor || '?'}, architecture: ${info.architecture || '?'}, device: ${info.device || '?'}` :
+                    'WebGPU (no adapter info)';
+            }
             const gl = renderer.getContext();
             const ext = gl.getExtension('WEBGL_debug_renderer_info');
             const name = ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER);
@@ -129,7 +178,8 @@ export function createThreeAdapter(THREE) {
             if (geometry) geometry.dispose();
             if (renderer) {
                 renderer.dispose();
-                renderer.forceContextLoss();
+                // WebGL only; frees the context immediately rather than at GC
+                renderer.forceContextLoss?.();
             }
             renderer = null;
             scene = null;

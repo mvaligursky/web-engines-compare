@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>benchmark frame</title>
+    <style>html, body { margin: 0; overflow: hidden; background: #111; }</style>
+</head>
+<body>
+    <script type="module">
+        // One of these per benchmark column, alive for the whole run. The parent
+        // creates every column's frame up front, then interleaves 'measure' calls
+        // row by row, so all columns in a table row are measured moments apart.
+        // Each engine still gets its own realm: separate module instances (so two
+        // versions of the same engine cannot fight over globals) and a clean
+        // teardown at the end.
+        import { createColumnHost } from './lib/column-run.js';
+
+        const post = (msg) => parent.postMessage(msg, location.origin);
+        const host = createColumnHost(post);
+
+        window.addEventListener('message', async (e) => {
+            if (e.origin !== location.origin || e.source !== parent) return;
+            const msg = e.data;
+            if (!msg || !msg.type) return;
+            try {
+                if (msg.type === 'init') {
+                    const info = await host.init(msg.config);
+                    post({ type: 'inited', info });
+                } else if (msg.type === 'measure') {
+                    const result = await host.measure(msg.opts);
+                    post({ type: 'row', rowIndex: msg.opts.rowIndex, result });
+                } else if (msg.type === 'shutdown') {
+                    host.destroy();
+                    post({ type: 'shutdown-done' });
+                }
+            } catch (err) {
+                post({ type: 'error', phase: msg.type, message: (err && err.message) || String(err) });
+            }
+        });
+
+        post({ type: 'ready' });
+    </script>
+</body>
+</html>
