@@ -21,7 +21,7 @@
     <script type="module">
         // Dev tool: renders the shared benchmark scene with one engine so
         // visual parity between engines can be checked side by side.
-        // Usage: scene-viewer.html?engine=three&count=1000&materials=100&complexity=complex
+        // Usage: scene-viewer.html?engine=three&backend=webgpu&count=1000&materials=100&complexity=complex
         // `engine` matches an entry id or engine name from engines.config.js.
         import { ENGINE_VERSIONS } from './engines.config.js';
         import { createAdapter } from './adapters/index.js';
@@ -29,20 +29,24 @@
 
         const params = new URLSearchParams(location.search);
         const engineKey = params.get('engine') || 'playcanvas';
+        const backend = params.get('backend') || 'webgl2';
         const count = parseInt(params.get('count') || '1000', 10);
         const materialCount = parseInt(params.get('materials') || '100', 10);
         const complexity = params.get('complexity') || 'simple';
+        const drawOrder = params.get('order') || 'creation';
 
         const entry = ENGINE_VERSIONS.find((e) => e.id === engineKey) ||
             ENGINE_VERSIONS.find((e) => e.engine === engineKey);
         if (!entry) throw new Error(`No engine entry matches '${engineKey}'`);
+        const build = entry.builds[backend];
+        if (!build) throw new Error(`${entry.label} has no '${backend}' build`);
 
         const label = document.getElementById('label');
-        label.textContent = `${entry.label} — ${count} cubes, ${materialCount} materials, ${complexity}`;
+        label.textContent = `${entry.label} ${backend} — ${count} cubes, ${materialCount} materials, ${complexity}`;
 
-        const module = await loadEngineModule(entry);
+        const module = await loadEngineModule(build);
         const adapter = createAdapter(entry, module);
-        await adapter.init({ canvas: document.getElementById('scene-canvas'), materialCount, complexity });
+        await adapter.init({ canvas: document.getElementById('scene-canvas'), backend, materialCount, complexity, drawOrder });
         adapter.setCubeCount(count);
         let frames = 0;
         adapter.start(() => { frames++; });

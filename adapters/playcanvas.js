@@ -10,6 +10,7 @@ import {
  */
 export function createPlayCanvasAdapter(pc) {
     let app = null;
+    let device = null;
     let cameraEntity = null;
     let mesh = null;
     /** @type {any[]} */
@@ -18,7 +19,7 @@ export function createPlayCanvasAdapter(pc) {
     const entities = [];
 
     const makeTexture = (data, srgb) => {
-        const tex = new pc.Texture(app.graphicsDevice, {
+        const tex = new pc.Texture(device, {
             width: TEXTURE_SIZE,
             height: TEXTURE_SIZE,
             format: srgb ? pc.PIXELFORMAT_SRGBA8 : pc.PIXELFORMAT_RGBA8,
@@ -37,17 +38,40 @@ export function createPlayCanvasAdapter(pc) {
     };
 
     return {
-        async init({ canvas, materialCount, complexity }) {
-            app = new pc.Application(canvas, {
-                graphicsDeviceOptions: {
-                    antialias: false,
-                    powerPreference: 'high-performance'
-                }
+        async init({ canvas, backend, materialCount, complexity, drawOrder }) {
+            device = await pc.createGraphicsDevice(canvas, {
+                deviceTypes: backend === 'webgpu' ? ['webgpu'] : ['webgl2'],
+                antialias: false,
+                powerPreference: 'high-performance'
             });
+            // createGraphicsDevice silently falls back (webgpu -> webgl2 -> null),
+            // which would make a WebGPU column a second WebGL run.
+            const expected = backend === 'webgpu' ? pc.DEVICETYPE_WEBGPU : pc.DEVICETYPE_WEBGL2;
+            if (device.deviceType !== expected) {
+                throw new Error(`Requested ${backend} but got '${device.deviceType}'`);
+            }
+            device.maxPixelRatio = 1;
+
+            const appOptions = new pc.AppOptions();
+            appOptions.graphicsDevice = device;
+            appOptions.componentSystems = [
+                pc.RenderComponentSystem,
+                pc.CameraComponentSystem,
+                pc.LightComponentSystem
+            ];
+
+            app = new pc.AppBase(canvas);
+            app.init(appOptions);
             app.setCanvasFillMode(pc.FILLMODE_FILL_WINDOW);
             app.setCanvasResolution(pc.RESOLUTION_AUTO);
-            app.graphicsDevice.maxPixelRatio = 1;
             app.scene.ambientLight.set(0, 0, 0);
+
+            // Left alone, the World layer uses SORTMODE_MATERIALMESH, sorting on
+            // MeshInstance._sortKeyForward (which packs material.id) so draws group by
+            // material. SORTMODE_NONE skips the sort and submits in insertion order.
+            if (drawOrder === 'creation') {
+                app.scene.layers.getLayerByName('World').opaqueSortMode = pc.SORTMODE_NONE;
+            }
 
             cameraEntity = new pc.Entity('camera');
             cameraEntity.addComponent('camera', {
@@ -73,7 +97,7 @@ export function createPlayCanvasAdapter(pc) {
             app.root.addChild(light);
 
             const h = CUBE_SIZE / 2;
-            mesh = pc.Mesh.fromGeometry(app.graphicsDevice, new pc.BoxGeometry({
+            mesh = pc.Mesh.fromGeometry(device, new pc.BoxGeometry({
                 halfExtents: new pc.Vec3(h, h, h)
             }));
 
@@ -81,7 +105,8 @@ export function createPlayCanvasAdapter(pc) {
             for (let m = 0; m < materialCount; m++) {
                 const spec = materialSpec(m);
                 const mat = new pc.StandardMaterial();
-                // glTF-style metallic-roughness setup (mirrors the glb parser)
+                // glTF-style metallic-roughness setup (mirrors the glb parser).
+                // pc takes color factors gamma-encoded, so spec sRGB values go in raw.
                 mat.useMetalness = true;
                 mat.diffuse.set(spec.baseColor[0], spec.baseColor[1], spec.baseColor[2]);
                 mat.metalness = spec.metallic;
@@ -105,6 +130,7 @@ export function createPlayCanvasAdapter(pc) {
             }
 
             app.start();
+            app.resizeCanvas();
         },
 
         setCubeCount(n) {
@@ -122,9 +148,9 @@ export function createPlayCanvasAdapter(pc) {
         },
 
         start(onFrame) {
-            // app.start() runs the engine's own rAF loop; measure the CPU window
-            // between 'frameupdate' (fired just before update()) and 'frameend'
-            // (fired right after render()).
+            // app.start() runs the engine's own rAF loop. 'frameupdate' fires just
+            // before app.update() and 'frameend' right after app.render(), so this
+            // brackets the engine's whole per-frame CPU cost.
             let t0 = 0;
             app.on('frameupdate', () => {
                 t0 = performance.now();
@@ -134,19 +160,38 @@ export function createPlayCanvasAdapter(pc) {
             });
         },
 
+        // pc drives its own rAF loop and offers no public pause, so an idle column
+        // keeps ticking app.update() (cheap: no scripts, render components have no
+        // per-frame update) but skips all culling and submission.
+        setPaused(paused) {
+            app.autoRender = !paused;
+        },
+
+        // stats.drawCalls.total is latched in stats.updateBasic() at the start of
+        // the next frame, so this reports the previous frame's count.
+        getDrawCalls() {
+            return app.stats?.drawCalls?.total ?? -1;
+        },
+
         resize() {
             app.resizeCanvas();
             fitCamera();
         },
 
         getInfo() {
-            const device = app.graphicsDevice;
+            if (device.isWebGPU) {
+                const info = device.gpuAdapter?.info;
+                return info ?
+                    `vendor: ${info.vendor || '?'}, architecture: ${info.architecture || '?'}, device: ${info.device || '?'}` :
+                    'WebGPU (no adapter info)';
+            }
             return `renderer: ${device.unmaskedRenderer || '?'}, vendor: ${device.unmaskedVendor || '?'}`;
         },
 
         destroy() {
             if (app) app.destroy();
             app = null;
+            device = null;
         }
     };
 }

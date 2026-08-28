@@ -19,6 +19,8 @@ export function createBabylonAdapter(B) {
     let master = null;
     let rafId = 0;
     let running = false;
+    /** @type {(() => void)|null} */
+    let loopFn = null;
 
     const makeTexture = (data) => {
         return new B.RawTexture(
@@ -36,11 +38,24 @@ export function createBabylonAdapter(B) {
     };
 
     return {
-        async init({ canvas, materialCount, complexity }) {
-            engine = new B.Engine(canvas, false /* antialias */, {
-                powerPreference: 'high-performance',
-                stencil: false
-            }, false /* adaptToDeviceRatio -> pixel ratio 1 */);
+        async init({ canvas, backend, materialCount, complexity, drawOrder }) {
+            if (backend === 'webgpu') {
+                if (!(await B.WebGPUEngine.IsSupportedAsync)) {
+                    throw new Error('Babylon reports WebGPU is not supported here');
+                }
+                engine = new B.WebGPUEngine(canvas, { antialias: false, stencil: false });
+                await engine.initAsync();
+                if (!engine.isWebGPU) {
+                    throw new Error('Requested webgpu but Babylon engine is not WebGPU');
+                }
+            } else {
+                engine = new B.Engine(canvas, false /* antialias */, {
+                    powerPreference: 'high-performance',
+                    stencil: false
+                }, false /* adaptToDeviceRatio -> pixel ratio 1 */);
+            }
+            // WebGPUEngine ignores the ctor's adaptToDeviceRatio arg
+            engine.setHardwareScalingLevel(1);
 
             scene = new B.Scene(engine);
             scene.useRightHandedSystem = true;
@@ -54,6 +69,16 @@ export function createBabylonAdapter(B) {
 
             const light = new B.DirectionalLight('light', new B.Vector3(LIGHT_DIR[0], LIGHT_DIR[1], LIGHT_DIR[2]), scene);
             light.intensity = 3.4;
+
+            // Left alone, Babylon uses RenderingGroup.PainterSortCompare, which groups by
+            // material.uniqueId. There is no unsorted opaque path (the opaqueSortCompareFn
+            // setter always installs the sorted renderer and coerces null back to
+            // PainterSortCompare), so creation order needs an explicit comparator;
+            // uniqueId is assigned in creation order. Stored now and picked up when the
+            // rendering group is created on first render.
+            if (drawOrder === 'creation') {
+                scene.setRenderingOrder(0, (a, b) => a.getMesh().uniqueId - b.getMesh().uniqueId);
+            }
 
             materials = [];
             for (let m = 0; m < materialCount; m++) {
@@ -98,18 +123,35 @@ export function createBabylonAdapter(B) {
             }
         },
 
+        setPaused(paused) {
+            if (paused) {
+                running = false;
+                cancelAnimationFrame(rafId);
+            } else if (!running && loopFn) {
+                running = true;
+                rafId = requestAnimationFrame(loopFn);
+            }
+        },
+
         start(onFrame) {
             running = true;
             const loop = () => {
                 if (!running) return;
                 rafId = requestAnimationFrame(loop);
+                // scene.render() covers world-matrix update, active-mesh evaluation
+                // (culling), render-list build + sort and draw submission.
                 const t0 = performance.now();
                 engine.beginFrame();
                 scene.render();
                 engine.endFrame();
                 onFrame(performance.now() - t0);
             };
+            loopFn = loop;
             rafId = requestAnimationFrame(loop);
+        },
+
+        getDrawCalls() {
+            return engine._drawCalls?.current ?? -1;
         },
 
         resize() {
@@ -118,6 +160,12 @@ export function createBabylonAdapter(B) {
         },
 
         getInfo() {
+            if (engine.isWebGPU) {
+                const info = engine._adapterInfo || engine.adapterInfo;
+                return info ?
+                    `vendor: ${info.vendor || '?'}, architecture: ${info.architecture || '?'}, device: ${info.device || '?'}` :
+                    'WebGPU (no adapter info)';
+            }
             const info = engine.getGlInfo();
             return `renderer: ${info.renderer || '?'}, vendor: ${info.vendor || '?'}`;
         },

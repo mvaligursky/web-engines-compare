@@ -1,17 +1,18 @@
 import { ENGINE_VERSIONS } from '../../engines.config.js';
+import { buildColumns } from '../../lib/backends.js';
 import { createBenchmarkUI } from '../../lib/bench-ui.js';
-import { runColumnBenchmark } from '../../lib/runner.js';
-import { COMPLEXITY_LEVELS } from '../../lib/scene-spec.js';
+import { runSequential } from '../../lib/runner.js';
+import { COMPLEXITY_LEVELS, DRAW_ORDER_MODES } from '../../lib/scene-spec.js';
 
-// Dev-only overrides, e.g. ?rows=500,1000&warmup=3&measure=20
+// Dev-only overrides, e.g. ?rows=500,1000&warmup=2&measure=10&mats=1000&complexity=complex&order=default
 const params = new URLSearchParams(location.search);
-const WARMUP_FRAMES = parseInt(params.get('warmup') || '10', 10);
-const MEASURE_FRAMES = parseInt(params.get('measure') || '60', 10);
+const WARMUP_FRAMES = parseInt(params.get('warmup') || '5', 10);
+const MEASURE_FRAMES = parseInt(params.get('measure') || '20', 10);
 
 /** @type {number[]} */
 const rowValues = params.get('rows') ?
     params.get('rows').split(',').map((v) => parseInt(v, 10)) :
-    Array.from({ length: 11 }, (_, i) => 10000 + i * 1000);
+    Array.from({ length: 20 }, (_, i) => 1000 + i * 1000);
 
 const rows = rowValues.map((v) => ({
     value: v,
@@ -21,32 +22,41 @@ const rows = rowValues.map((v) => ({
 const MATERIAL_COUNTS = [1, ...Array.from({ length: 20 }, (_, i) => (i + 1) * 50)];
 
 let materialCount = parseInt(params.get('mats') || '100', 10);
-let complexity = params.get('complexity') || 'simple';
+let complexity = params.get('complexity') || 'complex';
+let drawOrder = params.get('order') || DRAW_ORDER_MODES[0].id;
 if (!MATERIAL_COUNTS.includes(materialCount)) MATERIAL_COUNTS.push(materialCount);
+
 let running = false;
 
-const columns = ENGINE_VERSIONS.map((e) => ({ id: e.id, label: e.label, shortLabel: e.shortLabel }));
+const columns = buildColumns(ENGINE_VERSIONS);
 
 const metrics = [
-    { key: 'cpuMs', title: 'CPU frame time (ms)', format: (v) => v.toFixed(2) },
-    { key: 'fps', title: `Effective FPS (${MEASURE_FRAMES} frames / wall clock)`, format: (v) => v.toFixed(1) }
+    { key: 'cpuMs', title: 'CPU frame time (ms)', format: (v) => v.toFixed(2) }
 ];
 
 const ui = createBenchmarkUI({
     title: 'Draw Call Performance',
     legendLines: [
-        `A dense 2D grid of tiny cubes (deterministic layout, identical view in every engine) rendered as one draw call each — a CPU submission cost test. Native PBR (glTF metallic-roughness) materials, one directional light, no shadows, MSAA off, pixel ratio 1.`,
+        'A dense 2D grid of tiny cubes (deterministic layout, identical view in every engine) rendered as one draw call each — a CPU submission cost test. Native PBR (glTF metallic-roughness) materials, one directional light, no shadows, MSAA off, pixel ratio 1.',
+        'Columns are engine version x graphics backend. In the chart, color identifies the engine version and a dashed line means WebGPU.',
+        '',
+        'Draw order:',
+        '  Creation order (default) — cubes submitted in grid order, so the material changes on nearly every draw. Every engine and backend submits in exactly the same order, which is both the apples-to-apples comparison and the point of this test: lots of unsorted meshes each paying their own material bind.',
+        '  Engine default — nothing overridden. PlayCanvas, Babylon and three.js on WebGL2 group opaque draws by material, which collapses most of the per-draw material binds; three.js on WebGPU sorts by depth and does not group. Shows what each engine\'s own sort buys, but the columns are then not comparable.',
         '',
         'Controls:',
-        'Run All — all engine columns and all row counts.',
-        'Column headers — that engine only, all counts.',
-        `Left column (e.g. ${rows[0].label} ↑) — every count from ${rows[0].label} up through that row, all engines.`,
-        `Right column (e.g. ← ${rows[0].label}) — only that count, all engines.`,
-        'Grid cells — that engine only, counts up through that row.',
+        'Run All — all columns and all row counts.',
+        'Column headers — that column only, all counts.',
+        `Left column (e.g. ${rows[0].label} ↑) — every count from ${rows[0].label} up through that row, all columns.`,
+        `Right column (e.g. ← ${rows[0].label}) — only that count, all columns.`,
+        'Grid cells — that column only, counts up through that row.',
         '',
-        `CPU frame time — mean main-thread time the engine spends per frame (update + draw submission) over ${MEASURE_FRAMES} measured frames after ${WARMUP_FRAMES} warmup frames.`,
-        `Effective FPS — measured frames divided by wall-clock time (includes vsync and GPU stalls).`,
-        'Changing a dropdown clears stored results (they would no longer be comparable).'
+        `CPU frame time — mean main-thread time the engine spends per frame, over ${MEASURE_FRAMES} measured frames after ${WARMUP_FRAMES} warmup frames. This is the engine's whole frame cost: world-matrix updates, frustum culling, render-list build and sort, and draw submission. It excludes GPU execution and vsync idle, because all three engines return before the GPU has finished the frame.`,
+        'Draw calls actually submitted are checked against the requested cube count each run; a warning appears above if an engine submitted fewer (e.g. a renderer still compiling pipelines).',
+        'Changing a dropdown clears stored results (they would no longer be comparable).',
+        'Isolation: one engine is alive at a time, each in its own iframe, created and destroyed around its column — so peak memory is one scene, not the sum, and adding versions is free.',
+        'Every run begins with a warm-up phase that starts and shuts down EVERY enabled engine once. Measured cost attaches to a graphics context\'s ordinal position in the renderer process (the first is ~11% fast, the second ~11% slow, then it plateaus), and nothing else clears it — not an iframe, not a page reload, not a cooldown. Warming all engines puts every measurement past the anomalous positions so no engine benefits from going first.',
+        'For a definitive few-percent version comparison, still prefer one column per browser launch: only a fresh browser process fully resets the effect.'
     ],
     columns,
     rows,
@@ -71,6 +81,16 @@ const ui = createBenchmarkUI({
                 complexity = v;
                 ui.clearResults();
             }
+        },
+        {
+            id: 'order',
+            label: 'Draw order',
+            options: DRAW_ORDER_MODES.map((m) => ({ value: m.id, label: m.label })),
+            value: drawOrder,
+            onChange: (v) => {
+                drawOrder = v;
+                ui.clearResults();
+            }
         }
     ],
     handlers: {
@@ -84,36 +104,63 @@ const ui = createBenchmarkUI({
     fileBaseName: 'draw-call-benchmark'
 });
 
-const allColumns = () => columns.map((_, i) => i);
+const allColumns = () => columns.map((_, i) => i).filter((i) => !columns[i].disabled);
 const allRows = () => rows.map((_, i) => i);
 const rangeRows = (r) => Array.from({ length: r + 1 }, (_, i) => i);
 
 /**
+ * Run the requested columns over the requested rows, one engine alive at a
+ * time, after warming up every enabled column. See lib/runner.js for why.
+ *
  * @param {number[]} colIndices - Columns to run, in order.
- * @param {number[]} rowIndices - Rows to run per column, ascending.
+ * @param {number[]} rowIndices - Rows to run, ascending.
  */
 async function runSet(colIndices, rowIndices) {
     if (running) return;
+    const active = colIndices.filter((c) => !columns[c].disabled);
+    if (!active.length) return;
+
     running = true;
     ui.setRunning(true);
+    const failed = [];
+
+    for (const c of active) ui.setCellsPending(c, rowIndices);
+
     try {
-        for (const c of colIndices) {
-            ui.setCellsPending(c, rowIndices);
-            // eslint-disable-next-line no-await-in-loop
-            const info = await runColumnBenchmark({
-                entry: ENGINE_VERSIONS[c],
-                rowValues,
-                rowIndices,
-                materialCount,
-                complexity,
-                warmupFrames: WARMUP_FRAMES,
-                measureFrames: MEASURE_FRAMES,
-                onStatus: (t) => ui.setStatus(t),
-                onRowResult: (ri, res) => ui.setResult(c, ri, res)
-            });
-            ui.setColumnInfo(c, info);
-        }
-        ui.setStatus('Done.');
+        await runSequential({
+            // every enabled column is warmed, whatever subset is being measured,
+            // so a single-column run and a full run stay comparable
+            warmUpColumns: allColumns().map((c) => columns[c]),
+            columns: active.map((c) => columns[c]),
+            rowValues,
+            rowIndices,
+            materialCount,
+            complexity,
+            drawOrder,
+            warmupFrames: WARMUP_FRAMES,
+            measureFrames: MEASURE_FRAMES,
+            onStatus: (t) => ui.setStatus(t),
+            onColumnInfo: (column, info) => ui.setColumnInfo(columns.indexOf(column), info),
+            onRowResult: (column, ri, res) => {
+                const c = columns.indexOf(column);
+                ui.setResult(c, ri, res);
+                if (res.drawCalls >= 0 && res.drawCalls < res.expectedDrawCalls) {
+                    ui.addWarning(
+                        `${column.label} @ ${rows[ri].label}: submitted ${res.drawCalls} draw calls, ` +
+                        `expected ${res.expectedDrawCalls} — that row is not comparable.`
+                    );
+                }
+            },
+            onColumnError: (column, err) => {
+                // A dead column is skipped for the remaining rows; the rest continue.
+                console.error(`${column.label} failed:`, err);
+                const c = columns.indexOf(column);
+                ui.setCellsError(c, rowIndices);
+                ui.addWarning(`${column.label} failed: ${err.message}`);
+                failed.push(column.label);
+            }
+        });
+        ui.setStatus(failed.length ? `Done, with failures: ${failed.join(', ')}` : 'Done.');
     } catch (err) {
         console.error(err);
         ui.setStatus(`Error: ${err.message}`);
@@ -125,48 +172,46 @@ async function runSet(colIndices, rowIndices) {
 }
 
 /**
- * @returns {string} Plain-text dump of settings + both result tables.
+ * @returns {string} Plain-text dump of settings + results.
  */
 function buildSaveText() {
-    const COL_W = 12;
+    const COL_W = 13;
     const results = ui.results;
-    const header = `${'Count'.padEnd(10)}${columns.map((c) => c.shortLabel.padStart(COL_W)).join('')}`;
+    const header = `${'Count'.padEnd(10)}${columns.map((c) => (c.chartLabel || c.id).padStart(COL_W)).join('')}`;
     const lineW = header.length;
 
     let text = 'Web Engines Compare — Draw Call Performance\n';
     text += `${'═'.repeat(lineW)}\n`;
     text += `Unique materials: ${materialCount}\n`;
     text += `Material complexity: ${complexity}\n`;
+    text += `Draw order: ${drawOrder} (${DRAW_ORDER_MODES.find((m) => m.id === drawOrder)?.label ?? '?'})\n`;
     text += `Frames: ${WARMUP_FRAMES} warmup + ${MEASURE_FRAMES} measured per count\n`;
+    text += 'Isolation: one iframe per column, all kept alive; rows interleaved across columns\n';
     text += `Viewport: ${window.innerWidth}x${window.innerHeight} (pixel ratio forced to 1, MSAA off)\n`;
-    for (let c = 0; c < columns.length; c++) {
-        const entry = ENGINE_VERSIONS[c];
-        text += `${columns[c].label}: ${entry.url}\n`;
+    text += '\nCPU frame time = whole engine frame on the main thread (matrix updates, culling,\n';
+    text += 'render-list build + sort, draw submission). Excludes GPU execution and vsync idle.\n\n';
+    for (const col of columns) {
+        text += `${col.label}: ${col.build.url}${col.disabled ? ' [unavailable]' : ''}\n`;
     }
     text += `${'═'.repeat(lineW)}\n`;
 
-    for (const metric of metrics) {
-        text += `\n${metric.title}\n${header}\n${'─'.repeat(lineW)}\n`;
+    const table = (title, pick) => {
+        let out = `\n${title}\n${header}\n${'─'.repeat(lineW)}\n`;
         for (let r = 0; r < rows.length; r++) {
             let line = rows[r].label.padEnd(10);
             for (let c = 0; c < columns.length; c++) {
                 const res = results[c][r];
-                line += (res ? metric.format(res[metric.key]) : '—').padStart(COL_W);
+                line += (res ? pick(res) : '—').padStart(COL_W);
             }
-            text += `${line}\n`;
+            out += `${line}\n`;
         }
-        text += `${'─'.repeat(lineW)}\n`;
-    }
+        return `${out}${'─'.repeat(lineW)}\n`;
+    };
 
-    text += '\nCPU frame time medians (ms)\n';
-    for (let r = 0; r < rows.length; r++) {
-        let line = rows[r].label.padEnd(10);
-        for (let c = 0; c < columns.length; c++) {
-            const res = results[c][r];
-            line += (res ? res.cpuMsMedian.toFixed(2) : '—').padStart(COL_W);
-        }
-        text += `${line}\n`;
-    }
+    text += table('CPU frame time — mean (ms)', (res) => res.cpuMs.toFixed(2));
+    text += table('CPU frame time — median (ms)', (res) => res.cpuMsMedian.toFixed(2));
+    text += table('CPU frame time — min (ms)', (res) => res.cpuMsMin.toFixed(2));
+    text += table('Draw calls submitted (median; expected = row count)', (res) => (res.drawCalls >= 0 ? String(res.drawCalls) : 'n/a'));
 
     text += `\nUserAgent: ${navigator.userAgent}\n`;
     text += `Date: ${new Date().toISOString()}\n`;
