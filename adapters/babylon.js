@@ -1,7 +1,8 @@
 import {
-    CAMERA_FAR, CAMERA_FOV, CAMERA_NEAR, CLEAR_COLOR, CUBE_SIZE, LIGHT_DIR, TEXTURE_SIZE,
-    baseColorTextureData, cameraDistance, cubePosition, emissiveTextureData, materialSpec,
-    metallicRoughnessTextureData, normalTextureData
+    CAMERA_FAR, CAMERA_FOV, CAMERA_NEAR, CLEAR_COLOR, LIGHT_DIR, PLANE_COLOR, PLANE_ROUGHNESS,
+    PLANE_SIZE, PLANE_Z, SHADOW_MAP_SIZE, TEXTURE_SIZE,
+    baseColorTextureData, cameraDistance, cubeMeshIndex, cubePosition, emissiveTextureData,
+    materialSpec, meshSpec, metallicRoughnessTextureData, normalTextureData
 } from '../lib/scene-spec.js';
 
 /**
@@ -16,9 +17,12 @@ export function createBabylonAdapter(B) {
     let materials = [];
     /** @type {any[]} */
     const meshes = [];
-    let master = null;
+    /** @type {any[]} the unique meshes, disabled, which the cubes clone */
+    let masters = [];
+    let shadowGenerator = null;
     let rafId = 0;
     let running = false;
+    let frameDrawCalls = -1;
     /** @type {(() => void)|null} */
     let loopFn = null;
 
@@ -38,7 +42,7 @@ export function createBabylonAdapter(B) {
     };
 
     return {
-        async init({ canvas, backend, materialCount, complexity, drawOrder }) {
+        async init({ canvas, backend, materialCount, meshCount, complexity, drawOrder, shadows }) {
             if (backend === 'webgpu') {
                 if (!(await B.WebGPUEngine.IsSupportedAsync)) {
                     throw new Error('Babylon reports WebGPU is not supported here');
@@ -69,6 +73,13 @@ export function createBabylonAdapter(B) {
 
             const light = new B.DirectionalLight('light', new B.Vector3(LIGHT_DIR[0], LIGHT_DIR[1], LIGHT_DIR[2]), scene);
             light.intensity = 3.4;
+            if (shadows) {
+                // the shadow camera sits back along the light direction; by default a
+                // directional light fits its single shadow map to the casters every frame
+                light.position = new B.Vector3(-LIGHT_DIR[0] * 100, -LIGHT_DIR[1] * 100, -LIGHT_DIR[2] * 100);
+                shadowGenerator = new B.ShadowGenerator(SHADOW_MAP_SIZE, light);
+                shadowGenerator.usePercentageCloserFiltering = true;
+            }
 
             // Left alone, Babylon uses RenderingGroup.PainterSortCompare, which groups by
             // material.uniqueId. There is no unsorted opaque path (the opaqueSortCompareFn
@@ -78,6 +89,25 @@ export function createBabylonAdapter(B) {
             // rendering group is created on first render.
             if (drawOrder === 'creation') {
                 scene.setRenderingOrder(0, (a, b) => a.getMesh().uniqueId - b.getMesh().uniqueId);
+            }
+
+            // the plane behind the grid, double sided so its front faces the camera
+            // whatever the handedness
+            const planeMaterial = new B.PBRMetallicRoughnessMaterial('plane', scene);
+            planeMaterial.baseColor = new B.Color3(PLANE_COLOR[0], PLANE_COLOR[1], PLANE_COLOR[2]).toLinearSpace();
+            planeMaterial.metallic = 0;
+            planeMaterial.roughness = PLANE_ROUGHNESS;
+            const plane = B.MeshBuilder.CreatePlane('plane', { size: PLANE_SIZE, sideOrientation: B.Mesh.DOUBLESIDE }, scene);
+            plane.material = planeMaterial;
+            plane.position.z = PLANE_Z;
+            plane.receiveShadows = shadows;
+
+            masters = [];
+            for (let k = 0; k < meshCount; k++) {
+                const size = meshSpec(k);
+                const master = B.MeshBuilder.CreateBox(`mesh${k}`, { width: size[0], height: size[1], depth: size[2] }, scene);
+                master.setEnabled(false);
+                masters.push(master);
             }
 
             materials = [];
@@ -108,15 +138,11 @@ export function createBabylonAdapter(B) {
         setCubeCount(n) {
             while (meshes.length < n) {
                 const i = meshes.length;
-                let mesh;
-                if (!master) {
-                    master = B.MeshBuilder.CreateBox('cube0', { size: CUBE_SIZE }, scene);
-                    mesh = master;
-                } else {
-                    // clone shares the geometry but is submitted as its own draw call
-                    mesh = master.clone(`cube${i}`);
-                }
+                // a clone shares the geometry of its unique mesh but is submitted as its own draw call
+                const mesh = masters[cubeMeshIndex(i, masters.length)].clone(`cube${i}`);
+                mesh.setEnabled(true);
                 mesh.material = materials[i % materials.length];
+                shadowGenerator?.addShadowCaster(mesh, false);
                 const p = cubePosition(i);
                 mesh.position.set(p[0], p[1], p[2]);
                 meshes.push(mesh);
@@ -141,17 +167,24 @@ export function createBabylonAdapter(B) {
                 // scene.render() covers world-matrix update, active-mesh evaluation
                 // (culling), render-list build + sort and draw submission.
                 const t0 = performance.now();
+                const drawCallsBefore = engine._drawCalls?.current ?? 0;
                 engine.beginFrame();
                 scene.render();
                 engine.endFrame();
-                onFrame(performance.now() - t0);
+                const cpuMs = performance.now() - t0;
+
+                // the counter accumulates over frames unless something resets it, so
+                // count this frame's own draws
+                const drawCallsAfter = engine._drawCalls?.current ?? -1;
+                frameDrawCalls = drawCallsAfter >= drawCallsBefore ? drawCallsAfter - drawCallsBefore : drawCallsAfter;
+                onFrame(cpuMs);
             };
             loopFn = loop;
             rafId = requestAnimationFrame(loop);
         },
 
         getDrawCalls() {
-            return engine._drawCalls?.current ?? -1;
+            return frameDrawCalls;
         },
 
         resize() {

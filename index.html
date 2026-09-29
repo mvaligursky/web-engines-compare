@@ -24,11 +24,12 @@
                 <a class="card" href="./tests/draw-calls/">
                     <span class="card-title">Draw Call Performance</span>
                     <span class="card-desc">
-                        CPU submission cost: a dense grid of 1K–20K tiny cubes, each its own
-                        draw call, with a configurable number of unique PBR materials
-                        (1–1000) at three complexity levels. Identical deterministic scene
-                        and camera in every engine, on WebGL2 and WebGPU, submitted unsorted
-                        in the same order everywhere; MSAA off, pixel ratio 1.
+                        CPU cost: a dense grid of 1K–20K small boxes, each its own draw
+                        call, with configurable numbers of unique meshes and unique PBR
+                        materials (1–1000) at three complexity levels, and a directional
+                        light casting single-cascade shadows onto a plane behind them.
+                        Identical deterministic scene and camera in every engine, on WebGL2
+                        and WebGPU; MSAA off, pixel ratio 1.
                     </span>
                 </a>
             </li>

@@ -5,15 +5,18 @@ import { createThreeAdapter } from './three.js';
 /**
  * Benchmark adapter interface (all engines implement this):
  *
- *   async init({ canvas, backend, materialCount, complexity, drawOrder })
+ *   async init({ canvas, backend, materialCount, meshCount, complexity, drawOrder, shadows })
  *                    — create device/renderer for `backend` ('webgl2' | 'webgpu'),
- *                      then scene, camera, light and materials. Throws if the
- *                      engine silently fell back to a different backend.
+ *                      then scene, camera, light, the shadow receiving plane,
+ *                      meshes and materials. `shadows` turns on the directional
+ *                      light's single-cascade shadows. Throws if the engine
+ *                      silently fell back to a different backend.
  *                      `drawOrder` pins the opaque submission order (see
  *                      DRAW_ORDER_MODES); every engine reorders opaque draws by
  *                      default and they do not agree on the criteria, so this is
  *                      always set explicitly rather than left to the engine.
- *   setCubeCount(n)  — grow the cube grid to n instances (never shrinks within a run)
+ *   setCubeCount(n)  — grow the cube grid to n instances (never shrinks within a run),
+ *                      each using mesh cubeMeshIndex(i) and material i % materialCount
  *   start(onFrame)   — begin the frame loop; onFrame(cpuMs) is called once per
  *                      rendered frame with the main-thread time the engine spent
  *                      on that frame (see below)

@@ -21,7 +21,7 @@
     <script type="module">
         // Dev tool: renders the shared benchmark scene with one engine so
         // visual parity between engines can be checked side by side.
-        // Usage: scene-viewer.html?engine=three&backend=webgpu&count=1000&materials=100&complexity=complex
+        // Usage: scene-viewer.html?engine=three&backend=webgpu&count=1000&materials=100&meshes=100&complexity=complex&shadows=on
         // `engine` matches an entry id or engine name from engines.config.js.
         import { ENGINE_VERSIONS } from './engines.config.js';
         import { createAdapter } from './adapters/index.js';
@@ -32,8 +32,10 @@
         const backend = params.get('backend') || 'webgl2';
         const count = parseInt(params.get('count') || '1000', 10);
         const materialCount = parseInt(params.get('materials') || '100', 10);
+        const meshCount = parseInt(params.get('meshes') || '100', 10);
         const complexity = params.get('complexity') || 'simple';
-        const drawOrder = params.get('order') || 'creation';
+        const drawOrder = params.get('order') || 'default';
+        const shadows = (params.get('shadows') || 'on') === 'on';
 
         const entry = ENGINE_VERSIONS.find((e) => e.id === engineKey) ||
             ENGINE_VERSIONS.find((e) => e.engine === engineKey);
@@ -42,16 +44,17 @@
         if (!build) throw new Error(`${entry.label} has no '${backend}' build`);
 
         const label = document.getElementById('label');
-        label.textContent = `${entry.label} ${backend} — ${count} cubes, ${materialCount} materials, ${complexity}`;
+        label.textContent = `${entry.label} ${backend} — ${count} cubes, ${materialCount} materials, ${meshCount} meshes, ${complexity}, shadows ${shadows ? 'on' : 'off'}`;
 
         const module = await loadEngineModule(build);
         const adapter = createAdapter(entry, module);
-        await adapter.init({ canvas: document.getElementById('scene-canvas'), backend, materialCount, complexity, drawOrder });
+        await adapter.init({ canvas: document.getElementById('scene-canvas'), backend, materialCount, meshCount, complexity, drawOrder, shadows });
         adapter.setCubeCount(count);
         let frames = 0;
         adapter.start(() => { frames++; });
         window.addEventListener('resize', () => adapter.resize());
         window.__frames = () => frames;
+        window.__drawCalls = () => adapter.getDrawCalls();
     </script>
 </body>
 </html>

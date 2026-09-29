@@ -15,27 +15,41 @@
  *              ES module); 'script' loads via a <script> tag
  *   `global` — for kind 'script' only: the window global to capture
  *
- * Omit a backend to skip it for that version (no column is created).
+ * Omit a backend to skip it for that version (no column is created), and set
+ * `enabled: false` on an entry to leave it out of every test entirely.
  */
 export const ENGINE_VERSIONS = [
     {
-        id: 'playcanvas-2.21.4',
+        id: 'playcanvas-2.22.6',
         engine: 'playcanvas',
-        label: 'PlayCanvas 2.21.4',
-        shortLabel: 'PC 2.21',
+        label: 'PlayCanvas 2.22.6',
+        shortLabel: 'PC 2.22',
         builds: {
-            webgl2: { kind: 'esm', url: 'https://cdn.jsdelivr.net/npm/playcanvas@2.21.4/build/playcanvas.mjs' },
-            webgpu: { kind: 'esm', url: 'https://cdn.jsdelivr.net/npm/playcanvas@2.21.4/build/playcanvas.mjs' }
+            webgl2: { kind: 'esm', url: 'https://cdn.jsdelivr.net/npm/playcanvas@2.22.6/build/playcanvas.mjs' },
+            webgpu: { kind: 'esm', url: 'https://cdn.jsdelivr.net/npm/playcanvas@2.22.6/build/playcanvas.mjs' }
         }
     },
     {
-        id: 'playcanvas-2.22.0-beta.24',
+        id: 'playcanvas-2.23.0-beta.23',
         engine: 'playcanvas',
-        label: 'PlayCanvas 2.22.0-beta.24',
-        shortLabel: 'PC 2.22b',
+        label: 'PlayCanvas 2.23.0-beta.23',
+        shortLabel: 'PC 2.23b',
         builds: {
-            webgl2: { kind: 'esm', url: 'https://cdn.jsdelivr.net/npm/playcanvas@2.22.0-beta.24/build/playcanvas.mjs' },
-            webgpu: { kind: 'esm', url: 'https://cdn.jsdelivr.net/npm/playcanvas@2.22.0-beta.24/build/playcanvas.mjs' }
+            webgl2: { kind: 'esm', url: 'https://cdn.jsdelivr.net/npm/playcanvas@2.23.0-beta.23/build/playcanvas.mjs' },
+            webgpu: { kind: 'esm', url: 'https://cdn.jsdelivr.net/npm/playcanvas@2.23.0-beta.23/build/playcanvas.mjs' }
+        }
+    },
+    {
+        // the engine branch currently under test, see local-builds/README.md - set
+        // `enabled: true` while working on an optimization, with the build in place
+        id: 'playcanvas-local',
+        enabled: false,
+        engine: 'playcanvas',
+        label: 'PlayCanvas local build',
+        shortLabel: 'PC local',
+        builds: {
+            webgl2: { kind: 'esm', url: './local-builds/playcanvas-local.mjs' },
+            webgpu: { kind: 'esm', url: './local-builds/playcanvas-local.mjs' }
         }
     },
     {

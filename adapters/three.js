@@ -1,7 +1,8 @@
 import {
-    CAMERA_FAR, CAMERA_FOV, CAMERA_NEAR, CLEAR_COLOR, CUBE_SIZE, LIGHT_DIR, TEXTURE_SIZE,
-    baseColorTextureData, cameraDistance, cubePosition, emissiveTextureData, materialSpec,
-    metallicRoughnessTextureData, normalTextureData
+    CAMERA_FAR, CAMERA_FOV, CAMERA_NEAR, CLEAR_COLOR, LIGHT_DIR, PLANE_COLOR, PLANE_ROUGHNESS,
+    PLANE_SIZE, PLANE_Z, SHADOW_MAP_SIZE, TEXTURE_SIZE,
+    baseColorTextureData, cameraDistance, cubeMeshIndex, cubePosition, emissiveTextureData,
+    materialSpec, meshSpec, metallicRoughnessTextureData, normalTextureData
 } from '../lib/scene-spec.js';
 
 /**
@@ -13,7 +14,11 @@ export function createThreeAdapter(THREE) {
     let renderer = null;
     let scene = null;
     let camera = null;
-    let geometry = null;
+    let castShadows = false;
+    /** @type {any[]} */
+    let geometries = [];
+    /** @type {{ geometries: any[], materials: any[] }} */
+    let cubes = { geometries: [], materials: [] };
     /** @type {any[]} */
     let materials = [];
     /** @type {any[]} */
@@ -45,7 +50,7 @@ export function createThreeAdapter(THREE) {
     };
 
     return {
-        async init({ canvas, backend, materialCount, complexity, drawOrder }) {
+        async init({ canvas, backend, materialCount, meshCount, complexity, drawOrder, shadows }) {
             if (backend === 'webgpu') {
                 if (!THREE.WebGPURenderer) {
                     throw new Error('This three build has no WebGPURenderer (use the three.webgpu.js build)');
@@ -63,6 +68,9 @@ export function createThreeAdapter(THREE) {
             }
             renderer.setPixelRatio(1);
             renderer.setSize(window.innerWidth, window.innerHeight, false);
+            castShadows = shadows;
+            renderer.shadowMap.enabled = shadows;
+            renderer.shadowMap.type = THREE.PCFShadowMap;
 
             // 'default' leaves the renderer's own sort alone: WebGLRenderer groups by
             // material.id, the WebGPU renderer sorts by depth instead.
@@ -83,12 +91,41 @@ export function createThreeAdapter(THREE) {
             const light = new THREE.DirectionalLight(0xffffff, 3.6);
             light.position.set(-LIGHT_DIR[0] * 100, -LIGHT_DIR[1] * 100, -LIGHT_DIR[2] * 100);
             light.target.position.set(0, 0, 0);
+            if (shadows) {
+                // one orthographic shadow map around the whole plane, three's only
+                // directional shadow type - its equivalent of a single cascade
+                light.castShadow = true;
+                light.shadow.mapSize.set(SHADOW_MAP_SIZE, SHADOW_MAP_SIZE);
+                const half = PLANE_SIZE / 2;
+                Object.assign(light.shadow.camera, { left: -half, right: half, top: half, bottom: -half, near: 1, far: 300 });
+                light.shadow.camera.updateProjectionMatrix();
+            }
             scene.add(light);
             scene.add(light.target);
 
-            geometry = new THREE.BoxGeometry(CUBE_SIZE, CUBE_SIZE, CUBE_SIZE);
+            // the plane behind the grid - PlaneGeometry faces +Z
+            const plane = new THREE.Mesh(
+                new THREE.PlaneGeometry(PLANE_SIZE, PLANE_SIZE),
+                new THREE.MeshStandardMaterial({
+                    color: new THREE.Color().setRGB(PLANE_COLOR[0], PLANE_COLOR[1], PLANE_COLOR[2], THREE.SRGBColorSpace),
+                    metalness: 0,
+                    roughness: PLANE_ROUGHNESS
+                })
+            );
+            plane.position.z = PLANE_Z;
+            plane.receiveShadow = shadows;
+            scene.add(plane);
+            geometries = [plane.geometry];
+            materials = [plane.material];
 
-            materials = [];
+            const cubeGeometries = [];
+            for (let k = 0; k < meshCount; k++) {
+                const size = meshSpec(k);
+                cubeGeometries.push(new THREE.BoxGeometry(size[0], size[1], size[2]));
+            }
+            geometries.push(...cubeGeometries);
+
+            const cubeMaterials = [];
             for (let m = 0; m < materialCount; m++) {
                 const spec = materialSpec(m);
                 const mat = new THREE.MeshStandardMaterial({
@@ -107,14 +144,20 @@ export function createThreeAdapter(THREE) {
                     mat.emissive = new THREE.Color().setRGB(spec.emissive[0], spec.emissive[1], spec.emissive[2], THREE.SRGBColorSpace);
                     mat.emissiveMap = makeTexture(emissiveTextureData(m), true);
                 }
-                materials.push(mat);
+                cubeMaterials.push(mat);
             }
+            materials.push(...cubeMaterials);
+            cubes = { geometries: cubeGeometries, materials: cubeMaterials };
         },
 
         setCubeCount(n) {
             while (meshes.length < n) {
                 const i = meshes.length;
-                const mesh = new THREE.Mesh(geometry, materials[i % materials.length]);
+                const mesh = new THREE.Mesh(
+                    cubes.geometries[cubeMeshIndex(i, cubes.geometries.length)],
+                    cubes.materials[i % cubes.materials.length]
+                );
+                mesh.castShadow = castShadows;
                 const p = cubePosition(i);
                 mesh.position.set(p[0], p[1], p[2]);
                 scene.add(mesh);
@@ -147,8 +190,10 @@ export function createThreeAdapter(THREE) {
             rafId = requestAnimationFrame(loop);
         },
 
+        // WebGPURenderer counts drawCalls, WebGLRenderer calls - both reset every render()
         getDrawCalls() {
-            return renderer.info?.render?.drawCalls ?? -1;
+            const render = renderer.info?.render;
+            return render?.drawCalls ?? render?.calls ?? -1;
         },
 
         resize() {
@@ -175,7 +220,7 @@ export function createThreeAdapter(THREE) {
             cancelAnimationFrame(rafId);
             for (const t of textures) t.dispose();
             for (const m of materials) m.dispose();
-            if (geometry) geometry.dispose();
+            for (const g of geometries) g.dispose();
             if (renderer) {
                 renderer.dispose();
                 // WebGL only; frees the context immediately rather than at GC

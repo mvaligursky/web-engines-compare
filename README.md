@@ -14,15 +14,24 @@ the engine version and a dashed line means WebGPU.
 
 ### Draw Call Performance (`tests/draw-calls/`)
 
-CPU submission cost test: a dense 2D grid of tiny cubes (1K–20K in 1K steps), each cube
+CPU submission cost test: a dense 2D grid of small boxes (1K–20K in 1K steps), each box
 its own draw call, viewed by matching perspective cameras so every engine renders the
-same deterministic image. Cubes are tiny in screen space and MSAA is off with pixel
-ratio forced to 1, so GPU cost stays low and the numbers reflect main-thread submission
-cost. (Verified: shrinking the viewport 8x moves the results by only a few percent, so
-the test really is CPU-bound.)
+same deterministic image. The boxes use 100 unique meshes, boxes of different
+proportions with their own vertex and index buffers, in a deterministic random order,
+and 100 unique materials, round-robin. One directional light casts shadows with a single
+cascade (2048 map) onto a plane behind the grid: the boxes cast, the plane receives, so
+every box is also drawn into the shadow map. Boxes are tiny in screen space and MSAA is
+off with pixel ratio forced to 1, so GPU cost stays low and the numbers reflect
+main-thread cost. (Verified, before meshes and shadows were added: shrinking the
+viewport 8x moves the results by only a few percent, so the test really is CPU-bound.)
 
 - **Unique materials** dropdown (1, 50, 100 … 1000): materials are assigned round-robin,
   so more unique materials means more state changes between draws.
+- **Unique meshes** dropdown (1, 50, 100 … 1000): each box picks a mesh in a
+  deterministic random order, so draws switch vertex and index buffers as they would in
+  a real scene. 1 reproduces the earlier single-mesh test.
+- **Shadows** dropdown — *On* (default): the directional light's single-cascade shadow
+  pass is part of every frame; *Off*: the forward pass alone.
 - **Material complexity** dropdown — native PBR (glTF metallic-roughness compatible)
   materials in all engines (`StandardMaterial` / `MeshStandardMaterial` /
   `PBRMetallicRoughnessMaterial`):
@@ -35,16 +44,20 @@ the test really is CPU-bound.)
 
 ## Draw order
 
-This test is about submitting **lots of unsorted meshes**, so the default is creation
-order: every engine and backend submits in exactly the same grid order and the material
-changes on nearly every draw.
+The default is **engine default** order: nothing is overridden and every engine sorts
+opaque draws however it normally would. That is what a real application gets, so it is the
+representative case for tracking one engine across versions.
 
-That matters because, left to themselves, these engines reorder opaque draws and **do not
+The trade-off is that, left to themselves, these engines reorder opaque draws and **do not
 agree on the criteria**. Five of the six columns group draws by material — which collapses
-the per-draw material binds this test exists to measure — while three.js on WebGPU sorts
-by depth and does not group, so it performs ~100x more material rebinds than its
-neighbours. That divergence is real engine behaviour and is never overridden; it is simply
-not the interesting case here, and it makes the columns incomparable.
+the per-draw material binds — while three.js on WebGPU sorts by depth and does not group,
+so it performs ~100x more material rebinds than its neighbours. That divergence is real
+engine behaviour and is never overridden, but it does leave the columns incomparable
+across engines.
+
+Creation order is there for that comparison: every engine and backend submits in exactly
+the same grid order, the material changes on nearly every draw, and the raw per-draw cost
+is isolated.
 
 | Engine | Default opaque sort | Groups by material? |
 | --- | --- | --- |
@@ -55,12 +68,12 @@ not the interesting case here, and it makes the columns incomparable.
 
 The two modes:
 
-- **Creation order** (default) — cubes submitted in grid order, so the material changes on
-  nearly every draw. Same submission order in every engine and backend, isolating raw
-  per-draw cost.
-- **Engine default** — nothing overridden; every engine sorts however it normally would
-  (the table above). Shows what each engine's own sort buys it, but the columns are not
-  submitting in the same order, so cross-engine numbers are not like-for-like.
+- **Engine default** (default) — nothing overridden; every engine sorts however it
+  normally would (the table above). What an application actually gets, but the columns are
+  not submitting in the same order, so cross-engine numbers are not like-for-like.
+- **Creation order** — cubes submitted in grid order, so the material changes on nearly
+  every draw. Same submission order in every engine and backend, isolating raw per-draw
+  cost.
 
 Only creation order is forced, and here is how, per engine:
 
@@ -95,8 +108,9 @@ Where the timer sits in each engine:
 
 The `.txt` export also records median and min CPU frame time, and the number of draw
 calls each engine actually submitted. That last one is a correctness guard: if a renderer
-submits fewer draws than the row's cube count (e.g. WebGPU pipelines still compiling), a
-warning appears on the page and that row is flagged as not comparable.
+submits fewer draws than expected — one per box, two with shadows (e.g. WebGPU pipelines
+still compiling) — a warning appears on the page and that row is flagged as not
+comparable.
 
 ## Measurement isolation
 
@@ -108,7 +122,7 @@ adding engine versions costs nothing.
 ### The warm-up phase
 
 Every run first **starts and shuts down every enabled engine once** with a small scene
-(1000 cubes, 8 materials, 3 frames) before measuring anything.
+(1000 boxes, 8 materials, 8 meshes, 3 frames) before measuring anything.
 
 This is needed because measured cost attaches to a graphics context's **ordinal position
 in the renderer process**, not to measurement order. Proved with two byte-identical
@@ -141,7 +155,8 @@ subset you measure, so a single-column run stays comparable with a full run.
 
 | | |
 | --- | --- |
-| Full 8-column x 20-row matrix (1K-20K, complex) | ~184 s, peak 720 MB |
+| Full 8-column x 20-row matrix (1K-20K, complex, 100 meshes, shadows) | ~245 s |
+| Full matrix before meshes and shadows were added | ~184 s, peak 720 MB |
 | Single light column to 20K (incl. warm-up) | ~7 s, peak 148-196 MB |
 | Single Babylon WebGPU column to 20K | ~15 s, peak 471 MB |
 
@@ -154,7 +169,20 @@ from their column headers).
 For a definitive few-percent version comparison, still prefer one column per browser
 launch: only a fresh browser process fully resets the ordinal effect.
 
-## Adding an engine version
+## Engine versions
+
+The PlayCanvas columns are the current release (2.22.6) and the current beta
+(2.23.0-beta.23), next to Three.js r185 and Babylon.js 9.23.
+
+### Measuring a local PlayCanvas branch
+
+[`engines.config.js`](engines.config.js) also has a `PC local` entry, which loads
+`local-builds/playcanvas-local.mjs` — the engine branch you are optimizing. It is
+disabled with `enabled: false`, since the build is not committed and so is not on the
+live site. To measure a branch, build it into that file (see
+[`local-builds/README.md`](local-builds/README.md)) and set `enabled: true` locally.
+
+### Adding an engine version
 
 Edit [`engines.config.js`](engines.config.js) and add an entry:
 
@@ -176,22 +204,24 @@ Edit [`engines.config.js`](engines.config.js) and add an entry:
   relative url as above (for PlayCanvas: `npm run build` then copy
   `build/playcanvas.mjs`).
 - `kind: 'script'` with a `global` field loads UMD builds (used for Babylon).
+- `enabled: false` leaves the entry out of every test.
 - Omit a backend to skip it for that version — no column is created. Columns for a
   backend the *browser* lacks are shown as `n/a` rather than failing the run.
 
 ## Running locally
 
-Static site, no build step. Serve the repo root with any web server:
+Static site, no build step. Serve the repo root with any web server that does not let
+the browser cache the ES modules, or edits will not show up on reload:
 
 ```
-npx http-server -p 8080 .
+npx http-server -c-1 -p 8080 .
 ```
 
 Dev-only URL params for quick iterations (defaults are the real benchmark):
-`?rows=500,1000&warmup=2&measure=10&mats=1000&complexity=complex&order=default`
+`?rows=500,1000&warmup=2&measure=10&mats=1000&meshes=1&complexity=complex&order=creation&shadows=off`
 
 `scene-viewer.html` renders the shared scene with a single engine, for checking visual
-parity: `scene-viewer.html?engine=three&backend=webgpu&count=2000&materials=100&complexity=complex`
+parity: `scene-viewer.html?engine=three&backend=webgpu&count=2000&materials=100&meshes=100&complexity=complex&shadows=on`
 
 ## Methodology notes
 
@@ -202,7 +232,11 @@ parity: `scene-viewer.html?engine=three&backend=webgpu&count=2000&materials=100&
   as-is, three needs `Color.setRGB(..., SRGBColorSpace)` (its numeric constructor is
   linear), and Babylon's PBR factors need `.toLinearSpace()`. Light intensities are tuned
   per engine so measured on-screen brightness matches within a few percent.
-- One directional light, no shadows, no IBL, no ambient in every engine.
+- One directional light, no IBL, no ambient in every engine. Its shadows use one
+  cascade in every engine: PlayCanvas `numCascades: 1` covering the view up to the plane,
+  three's single orthographic shadow camera sized to the plane, and Babylon's
+  `ShadowGenerator`, which fits its shadow map to the casters every frame. All three
+  filter with PCF.
 - Adapters assert they got the backend they asked for — all three engines can silently
   fall back to WebGL, which would make a "WebGPU" column a second WebGL run.
 - Each column creates a fresh canvas + context and is torn down afterwards; a short pause

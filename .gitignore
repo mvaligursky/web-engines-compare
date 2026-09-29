@@ -1,2 +1,5 @@
 node_modules/
 .DS_Store
+
+# engine build artifacts of the branch under test
+local-builds/*.mjs

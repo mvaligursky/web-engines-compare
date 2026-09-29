@@ -1,7 +1,8 @@
 import {
-    CAMERA_FAR, CAMERA_FOV, CAMERA_NEAR, CLEAR_COLOR, CUBE_SIZE, LIGHT_DIR, TEXTURE_SIZE,
-    baseColorTextureData, cameraDistance, cubePosition, emissiveTextureData, materialSpec,
-    metallicRoughnessTextureData, normalTextureData
+    CAMERA_FAR, CAMERA_FOV, CAMERA_NEAR, CLEAR_COLOR, LIGHT_DIR, PLANE_COLOR, PLANE_ROUGHNESS,
+    PLANE_SIZE, PLANE_Z, SHADOW_MAP_SIZE, TEXTURE_SIZE,
+    baseColorTextureData, cameraDistance, cubeMeshIndex, cubePosition, emissiveTextureData,
+    materialSpec, meshSpec, metallicRoughnessTextureData, normalTextureData
 } from '../lib/scene-spec.js';
 
 /**
@@ -12,7 +13,10 @@ export function createPlayCanvasAdapter(pc) {
     let app = null;
     let device = null;
     let cameraEntity = null;
-    let mesh = null;
+    let lightEntity = null;
+    let castShadows = false;
+    /** @type {any[]} */
+    let meshes = [];
     /** @type {any[]} */
     let materials = [];
     /** @type {any[]} */
@@ -34,11 +38,16 @@ export function createPlayCanvasAdapter(pc) {
 
     const fitCamera = () => {
         const aspect = window.innerWidth / window.innerHeight;
-        cameraEntity.setLocalPosition(0, 0, cameraDistance(aspect));
+        const distance = cameraDistance(aspect);
+        cameraEntity.setLocalPosition(0, 0, distance);
+
+        // the single cascade covers the view up to just past the plane, which faces the
+        // camera and so sits at one depth
+        lightEntity.light.shadowDistance = distance - PLANE_Z + 1;
     };
 
     return {
-        async init({ canvas, backend, materialCount, complexity, drawOrder }) {
+        async init({ canvas, backend, materialCount, meshCount, complexity, drawOrder, shadows }) {
             device = await pc.createGraphicsDevice(canvas, {
                 deviceTypes: backend === 'webgpu' ? ['webgpu'] : ['webgl2'],
                 antialias: false,
@@ -80,26 +89,53 @@ export function createPlayCanvasAdapter(pc) {
                 nearClip: CAMERA_NEAR,
                 farClip: CAMERA_FAR
             });
-            fitCamera();
-            cameraEntity.lookAt(0, 0, 0);
             app.root.addChild(cameraEntity);
 
             // pc directional lights shine along the entity's -Y axis
-            const light = new pc.Entity('light');
-            light.addComponent('light', {
+            castShadows = shadows;
+            lightEntity = new pc.Entity('light');
+            lightEntity.addComponent('light', {
                 type: 'directional',
                 color: new pc.Color(1, 1, 1),
                 intensity: 1.2,
-                castShadows: false
+                castShadows: shadows,
+                numCascades: 1,
+                shadowResolution: SHADOW_MAP_SIZE
             });
             const q = new pc.Quat().setFromDirections(pc.Vec3.DOWN, new pc.Vec3(LIGHT_DIR[0], LIGHT_DIR[1], LIGHT_DIR[2]));
-            light.setRotation(q);
-            app.root.addChild(light);
+            lightEntity.setRotation(q);
+            app.root.addChild(lightEntity);
 
-            const h = CUBE_SIZE / 2;
-            mesh = pc.Mesh.fromGeometry(device, new pc.BoxGeometry({
-                halfExtents: new pc.Vec3(h, h, h)
-            }));
+            fitCamera();
+            cameraEntity.lookAt(0, 0, 0);
+
+            // the plane behind the grid - the pc plane primitive faces +Y, so turn it to face +Z
+            const planeMaterial = new pc.StandardMaterial();
+            planeMaterial.useMetalness = true;
+            planeMaterial.diffuse.set(PLANE_COLOR[0], PLANE_COLOR[1], PLANE_COLOR[2]);
+            planeMaterial.metalness = 0;
+            planeMaterial.gloss = PLANE_ROUGHNESS;
+            planeMaterial.glossInvert = true;
+            planeMaterial.update();
+            const plane = new pc.Entity('plane');
+            plane.addComponent('render', {
+                type: 'plane',
+                material: planeMaterial,
+                castShadows: false,
+                receiveShadows: true
+            });
+            plane.setLocalScale(PLANE_SIZE, 1, PLANE_SIZE);
+            plane.setLocalEulerAngles(90, 0, 0);
+            plane.setLocalPosition(0, 0, PLANE_Z);
+            app.root.addChild(plane);
+
+            meshes = [];
+            for (let k = 0; k < meshCount; k++) {
+                const size = meshSpec(k);
+                meshes.push(pc.Mesh.fromGeometry(device, new pc.BoxGeometry({
+                    halfExtents: new pc.Vec3(size[0] / 2, size[1] / 2, size[2] / 2)
+                })));
+            }
 
             materials = [];
             for (let m = 0; m < materialCount; m++) {
@@ -138,7 +174,9 @@ export function createPlayCanvasAdapter(pc) {
                 const i = entities.length;
                 const e = new pc.Entity(`cube${i}`);
                 e.addComponent('render', {
-                    meshInstances: [new pc.MeshInstance(mesh, materials[i % materials.length])]
+                    meshInstances: [new pc.MeshInstance(meshes[cubeMeshIndex(i, meshes.length)], materials[i % materials.length])],
+                    castShadows,
+                    receiveShadows: false
                 });
                 const p = cubePosition(i);
                 e.setLocalPosition(p[0], p[1], p[2]);
