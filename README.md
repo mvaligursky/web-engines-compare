@@ -171,8 +171,8 @@ launch: only a fresh browser process fully resets the ordinal effect.
 
 ## Engine versions
 
-The PlayCanvas columns are the current release (2.22.6) and the current beta
-(2.23.0-beta.23), next to Three.js r185 and Babylon.js 9.23.
+The PlayCanvas columns are the current release (2.23.0) and the previous one
+(2.22.6), next to Three.js r185 and Babylon.js 9.23.
 
 ### Measuring a local PlayCanvas branch
 
@@ -188,13 +188,13 @@ Edit [`engines.config.js`](engines.config.js) and add an entry:
 
 ```js
 {
-    id: 'playcanvas-2.23.0-dev',
+    id: 'playcanvas-2.24.0-dev',
     engine: 'playcanvas',
-    label: 'PlayCanvas 2.23 dev',
-    shortLabel: 'PC 2.23d',
+    label: 'PlayCanvas 2.24 dev',
+    shortLabel: 'PC 2.24d',
     builds: {
-        webgl2: { kind: 'esm', url: './local-builds/playcanvas-2.23.0-dev.mjs' },
-        webgpu: { kind: 'esm', url: './local-builds/playcanvas-2.23.0-dev.mjs' }
+        webgl2: { kind: 'esm', url: './local-builds/playcanvas-2.24.0-dev.mjs' },
+        webgpu: { kind: 'esm', url: './local-builds/playcanvas-2.24.0-dev.mjs' }
     }
 }
 ```
