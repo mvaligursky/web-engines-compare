@@ -72,12 +72,17 @@ export function createThreeAdapter(THREE) {
             renderer.shadowMap.enabled = shadows;
             renderer.shadowMap.type = THREE.PCFShadowMap;
 
-            // 'default' leaves the renderer's own sort alone: WebGLRenderer groups by
-            // material.id, the WebGPU renderer sorts by depth instead.
+            // 'default' keeps WebGLRenderer's own sort, which groups by material.id
             if (drawOrder === 'creation') {
                 // skips both the sort and the per-object depth projection;
                 // order becomes scene-graph traversal order
                 renderer.sortObjects = false;
+            } else if (backend === 'webgpu') {
+                // the WebGPU renderer's own opaque sort is by depth and does not group by
+                // material; give it WebGLRenderer's painterSortStable order, so every column
+                // groups by material
+                renderer.setOpaqueSort((a, b) => (a.groupOrder - b.groupOrder) || (a.renderOrder - b.renderOrder) ||
+                    (a.material.id - b.material.id) || (a.z - b.z) || (a.id - b.id));
             }
 
             scene = new THREE.Scene();

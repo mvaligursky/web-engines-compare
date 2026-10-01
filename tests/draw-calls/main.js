@@ -45,7 +45,7 @@ const ui = createBenchmarkUI({
         'Columns are engine version x graphics backend. In the chart, color identifies the engine version and a dashed line means WebGPU.',
         '',
         'Draw order:',
-        '  Engine default (default) — nothing overridden: every engine sorts opaque draws the way it normally does, which is what an application gets. PlayCanvas, Babylon and three.js on WebGL2 group opaque draws by material; three.js on WebGPU sorts by depth and does not group, so the columns do not submit in the same order and cross-engine numbers are not like-for-like.',
+        '  Engine default (default) — every engine sorts opaque draws the way it normally does, which is what an application gets, and groups them by material. The exception is three.js on WebGPU, whose own sort is by depth and does not group: it is given the material-first sort three.js uses on WebGL2.',
         '  Creation order — boxes submitted in grid order, so the material changes on nearly every draw. Every engine and backend submits in exactly the same order, isolating the raw per-draw cost.',
         '',
         'Shadows:',
