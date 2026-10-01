@@ -44,121 +44,37 @@ viewport 8x moves the results by only a few percent, so the test really is CPU-b
 
 ## Results
 
-Draw Call Performance on 2026-10-01, on two machines, at the default settings: 100 unique
-materials (complex), 100 unique meshes, shadows on, engine default draw order, 5 warmup +
-20 measured frames per count, pixel ratio 1, MSAA off. Every box is drawn twice (forward
-and shadow pass), so 20K boxes is about 40K draw calls.
+The latest version of each engine on three devices, 2026-10-01: macOS (Apple M4 Max), Windows
+(Intel Core i7-10700F, NVIDIA GeForce RTX 2070) and Android (Google Pixel 8 Pro, 1K–5K boxes
+only), Chrome 154, default test settings.
 
-| Machine | Hardware | Browser | Graphics | Viewport |
-| --- | --- | --- | --- | --- |
-| macOS | Apple M4 Max | Chrome 154 | WebGL2 through ANGLE on Metal, WebGPU on Metal | 1261x899 |
-| Windows | Intel Core i7-10700F 2.9 GHz, NVIDIA GeForce RTX 2070 | Chrome 154 | WebGL2 through ANGLE on Direct3D 11, WebGPU | 2022x1143 |
+![CPU time per draw call per engine, WebGL2 and WebGPU, on macOS, Windows and Android](results/2026-10-01/overview.png)
 
-| Columns | Engine version | Build |
-| --- | --- | --- |
-| PC 2.22 | PlayCanvas 2.22.6 | `playcanvas@2.22.6/build/playcanvas.mjs` |
-| PC 2.23 | PlayCanvas 2.23.0 | `playcanvas@2.23.0/build/playcanvas.mjs` |
-| Three r186 | Three.js 0.186.1 | `three@0.186.1/build/three.module.js` (WebGL2), `three.webgpu.js` (WebGPU) |
-| Babylon 9.29 | Babylon.js 9.29.0 | `babylonjs@9.29.0/babylon.js` |
+CPU time per draw call (µs), lower is better: each engine's mean frame times summed over all
+measured box counts, divided by the draw calls it submitted at those counts.
 
-### Overview
+| Engine | macOS WebGL2 | macOS WebGPU | Windows WebGL2 | Windows WebGPU | Android WebGL2 | Android WebGPU |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| PlayCanvas 2.23.0 | 0.75 | 0.43 | 1.66 | 1.22 | 2.16 | 1.63 |
+| Three.js r186 | 0.89 | 2.10 | 2.10 | 4.68 | 2.43 | 5.66 |
+| Babylon.js 9.29 | 2.35 | 4.40 | 4.83 | 7.34 | 5.93 | 9.25 |
 
-The latest version of each engine, per graphics backend and machine.
-
-![Average CPU frame time per engine, WebGL2 and WebGPU, on macOS and Windows](results/overview-2026-10-01.png)
-
-Average CPU frame time (ms), lower is better: the mean frame time averaged over the 20 box
-counts, 1K to 20K.
-
-| Engine | macOS WebGL2 | macOS WebGPU | Windows WebGL2 | Windows WebGPU |
-| --- | ---: | ---: | ---: | ---: |
-| PlayCanvas 2.23.0 | 15.76 | 9.00 | 34.79 | 25.74 |
-| Three.js r186 | 18.44 | 42.24 | 39.85 | 91.87 |
-| Babylon.js 9.29 | 47.82 | 92.56 | 107.79 | 156.36 |
-
-The columns keep each engine's own draw order, so cross-engine numbers are not
-like-for-like (see [Draw order](#draw-order)).
-
-### macOS, Apple M4 Max
-
-![CPU frame time per engine and backend on macOS, 1K to 20K boxes](results/draw-calls-2026-10-01-macos.png)
-
-CPU frame time, mean (ms), lower is better.
-
-| Boxes | PC 2.22 WebGL2 | PC 2.22 WebGPU | PC 2.23 WebGL2 | PC 2.23 WebGPU | Three r186 WebGL2 | Three r186 WebGPU | Babylon 9.29 WebGL2 | Babylon 9.29 WebGPU |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 1K | 1.89 | 2.77 | 1.33 | 1.25 | 1.76 | 2.75 | 4.14 | 5.75 |
-| 2K | 3.21 | 5.07 | 2.03 | 2.00 | 3.11 | 5.42 | 7.87 | 10.86 |
-| 3K | 4.50 | 7.36 | 3.14 | 2.66 | 4.35 | 9.33 | 11.02 | 18.19 |
-| 4K | 6.05 | 10.23 | 3.99 | 3.24 | 5.81 | 13.09 | 15.35 | 24.09 |
-| 5K | 8.02 | 13.11 | 9.28 | 4.17 | 9.32 | 17.40 | 20.22 | 31.08 |
-| 6K | 9.75 | 19.29 | 10.85 | 4.64 | 11.03 | 20.53 | 24.69 | 39.39 |
-| 7K | 11.54 | 19.44 | 12.17 | 5.36 | 12.73 | 24.58 | 29.18 | 46.87 |
-| 8K | 13.65 | 23.83 | 13.56 | 6.41 | 14.46 | 28.92 | 34.71 | 53.60 |
-| 9K | 15.22 | 26.83 | 15.19 | 7.06 | 16.28 | 33.66 | 39.52 | 60.57 |
-| 10K | 17.38 | 31.51 | 16.01 | 8.50 | 17.90 | 37.04 | 44.50 | 68.58 |
-| 11K | 19.39 | 33.75 | 17.49 | 9.42 | 19.51 | 41.05 | 50.32 | 76.39 |
-| 12K | 21.51 | 36.83 | 18.55 | 9.94 | 21.23 | 44.51 | 54.90 | 83.68 |
-| 13K | 23.89 | 41.10 | 19.71 | 11.21 | 22.90 | 48.71 | 60.60 | 91.84 |
-| 14K | 25.90 | 45.35 | 20.63 | 11.89 | 24.64 | 52.30 | 64.60 | 99.79 |
-| 15K | 28.50 | 48.58 | 21.52 | 12.75 | 26.36 | 57.58 | 69.34 | 105.63 |
-| 16K | 31.29 | 52.39 | 22.76 | 13.67 | 28.05 | 61.90 | 74.67 | 113.24 |
-| 17K | 33.04 | 56.78 | 23.88 | 14.43 | 29.78 | 65.97 | 80.21 | 198.29 |
-| 18K | 35.32 | 59.33 | 26.20 | 15.64 | 31.45 | 69.96 | 85.09 | 219.79 |
-| 19K | 38.27 | 63.65 | 27.51 | 17.06 | 33.23 | 74.29 | 89.98 | 240.08 |
-| 20K | 39.70 | 67.93 | 29.41 | 18.75 | 34.81 | 135.86 | 95.50 | 263.43 |
-
-- PlayCanvas 2.23.0 against 2.22.6 at 20K boxes: 1.35x faster on WebGL2 (39.70 to
-  29.41 ms) and 3.62x faster on WebGPU (67.93 to 18.75 ms).
-- Full export, with median and min frame time and the draw calls each engine submitted:
-  [`results/draw-calls-2026-10-01-macos.txt`](results/draw-calls-2026-10-01-macos.txt).
-
-### Windows, Intel Core i7-10700F, NVIDIA GeForce RTX 2070
-
-![CPU frame time per engine and backend on Windows, 1K to 20K boxes](results/draw-calls-2026-10-01-windows.png)
-
-CPU frame time, mean (ms), lower is better.
-
-| Boxes | PC 2.22 WebGL2 | PC 2.22 WebGPU | PC 2.23 WebGL2 | PC 2.23 WebGPU | Three r186 WebGL2 | Three r186 WebGPU | Babylon 9.29 WebGL2 | Babylon 9.29 WebGPU |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 1K | 5.76 | 8.49 | 5.20 | 4.01 | 4.48 | 10.65 | 11.52 | 15.43 |
-| 2K | 8.53 | 14.16 | 7.06 | 7.08 | 8.08 | 16.57 | 26.01 | 28.97 |
-| 3K | 12.89 | 21.02 | 9.48 | 8.61 | 11.59 | 24.99 | 31.35 | 43.61 |
-| 4K | 15.89 | 28.34 | 12.38 | 9.69 | 15.31 | 34.52 | 42.31 | 57.39 |
-| 5K | 20.80 | 36.20 | 15.79 | 12.31 | 19.04 | 42.39 | 47.87 | 72.37 |
-| 6K | 24.21 | 43.37 | 18.93 | 14.38 | 22.21 | 51.26 | 56.66 | 89.12 |
-| 7K | 28.46 | 51.00 | 22.63 | 16.50 | 26.33 | 58.60 | 65.39 | 102.77 |
-| 8K | 34.46 | 58.61 | 24.94 | 19.33 | 29.25 | 70.61 | 79.59 | 127.01 |
-| 9K | 38.94 | 64.39 | 28.42 | 21.99 | 32.57 | 75.91 | 107.66 | 136.04 |
-| 10K | 43.77 | 72.42 | 32.95 | 24.97 | 36.74 | 87.20 | 104.60 | 147.28 |
-| 11K | 48.70 | 80.01 | 37.63 | 27.01 | 40.14 | 96.20 | 110.97 | 161.08 |
-| 12K | 54.72 | 88.78 | 37.94 | 29.84 | 45.11 | 104.60 | 145.03 | 180.17 |
-| 13K | 57.88 | 97.15 | 41.19 | 30.44 | 49.23 | 112.30 | 147.71 | 196.14 |
-| 14K | 63.76 | 105.19 | 45.42 | 32.96 | 53.18 | 124.36 | 140.23 | 207.12 |
-| 15K | 67.74 | 111.07 | 49.36 | 35.71 | 57.33 | 134.41 | 169.60 | 220.10 |
-| 16K | 72.95 | 118.81 | 52.50 | 38.16 | 62.55 | 140.60 | 149.49 | 235.91 |
-| 17K | 80.93 | 129.01 | 56.64 | 41.04 | 66.71 | 148.82 | 167.47 | 260.79 |
-| 18K | 84.79 | 136.07 | 62.10 | 43.77 | 69.84 | 161.16 | 171.27 | 267.85 |
-| 19K | 86.57 | 143.16 | 65.91 | 47.04 | 72.75 | 165.37 | 184.41 | 278.55 |
-| 20K | 90.31 | 153.58 | 69.29 | 49.86 | 74.62 | 176.82 | 196.68 | 299.51 |
-
-- PlayCanvas 2.23.0 against 2.22.6 at 20K boxes: 1.30x faster on WebGL2 (90.31 to
-  69.29 ms) and 3.08x faster on WebGPU (153.58 to 49.86 ms).
-- Full export, with median and min frame time and the draw calls each engine submitted:
-  [`results/draw-calls-2026-10-01-windows.txt`](results/draw-calls-2026-10-01-windows.txt).
+**[Full results](results/2026-10-01/README.md)**: the charts and frame-time tables per device,
+the PlayCanvas 2.22.6 to 2.23.0 comparison, and the raw exports.
 
 ## Draw order
 
-The default is **engine default** order: nothing is overridden and every engine sorts
-opaque draws however it normally would. That is what a real application gets, so it is the
-representative case for tracking one engine across versions.
+The default is **engine default** order: every engine sorts opaque draws however it
+normally would. That is what a real application gets, so it is the representative case for
+tracking one engine across versions.
 
-The trade-off is that, left to themselves, these engines reorder opaque draws and **do not
-agree on the criteria**. Five of the six columns group draws by material — which collapses
-the per-draw material binds — while three.js on WebGPU sorts by depth and does not group,
-so it performs ~100x more material rebinds than its neighbours. That divergence is real
-engine behaviour and is never overridden, but it does leave the columns incomparable
-across engines.
+Left to themselves, these engines **do not agree on the criteria**. Five of the six columns
+group draws by material, which collapses the per-draw material binds, while three.js on
+WebGPU sorts by depth and does not group, so it performs ~100x more material rebinds than
+its neighbours. The adapter therefore gives three.js on WebGPU the material-first order its
+WebGL2 renderer uses (`renderer.setOpaqueSort`), so every column groups by material. On
+macOS this made no measurable difference to three.js WebGPU's CPU time, so its cost is per
+draw rather than in the rebinds.
 
 Creation order is there for that comparison: every engine and backend submits in exactly
 the same grid order, the material changes on nearly every draw, and the raw per-draw cost
@@ -168,19 +84,19 @@ is isolated.
 | --- | --- | --- |
 | PlayCanvas (both) | `SORTMODE_MATERIALMESH` on `MeshInstance._sortKeyForward` (packs `material.id`) | yes |
 | Three.js WebGL2 | `painterSortStable`: groupOrder → renderOrder → `material.id` → variant → z → id | yes |
-| Three.js WebGPU | a *different* `painterSortStable`: groupOrder → renderOrder → **z** → id | **no** |
+| Three.js WebGPU | its own `painterSortStable` is groupOrder → renderOrder → **z** → id, replaced by the WebGL2 order above via `setOpaqueSort` | yes, set by the adapter |
 | Babylon.js (both) | `RenderingGroup.PainterSortCompare` = `material.uniqueId` difference | yes |
 
 The two modes:
 
-- **Engine default** (default) — nothing overridden; every engine sorts however it
-  normally would (the table above). What an application actually gets, but the columns are
-  not submitting in the same order, so cross-engine numbers are not like-for-like.
+- **Engine default** (default) — every engine sorts however it normally would (the table
+  above), with three.js on WebGPU given its WebGL2 order. What an application actually gets;
+  every column groups by material, though the order within a material differs per engine.
 - **Creation order** — cubes submitted in grid order, so the material changes on nearly
   every draw. Same submission order in every engine and backend, isolating raw per-draw
   cost.
 
-Only creation order is forced, and here is how, per engine:
+Creation order is forced like this, per engine:
 
 | Engine | Forcing creation order |
 | --- | --- |
