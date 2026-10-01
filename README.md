@@ -42,6 +42,55 @@ viewport 8x moves the results by only a few percent, so the test really is CPU-b
 - The grid runs each row cumulatively (build 1K, measure, add 1K more, measure, …) so a
   full column is a single engine session.
 
+## Results
+
+Draw Call Performance on 2026-10-01, at the default settings: 100 unique materials
+(complex), 100 unique meshes, shadows on, engine default draw order, 5 warmup + 20
+measured frames per count. Chrome 154 on macOS, Apple M4 Max (WebGL2 through ANGLE on
+Metal, WebGPU on Metal), viewport 1261x899, pixel ratio 1, MSAA off.
+
+| Columns | Engine version | Build |
+| --- | --- | --- |
+| PC 2.22 | PlayCanvas 2.22.6 | `playcanvas@2.22.6/build/playcanvas.mjs` |
+| PC 2.23 | PlayCanvas 2.23.0 | `playcanvas@2.23.0/build/playcanvas.mjs` |
+| Three r186 | Three.js 0.186.1 | `three@0.186.1/build/three.module.js` (WebGL2), `three.webgpu.js` (WebGPU) |
+| Babylon 9.29 | Babylon.js 9.29.0 | `babylonjs@9.29.0/babylon.js` |
+
+![CPU frame time per engine and backend, 1K to 20K boxes](results/draw-calls-2026-10-01.png)
+
+CPU frame time, mean (ms), lower is better. Every box is drawn twice (forward and shadow
+pass), so 20K boxes is about 40K draw calls.
+
+| Boxes | PC 2.22 WebGL2 | PC 2.22 WebGPU | PC 2.23 WebGL2 | PC 2.23 WebGPU | Three r186 WebGL2 | Three r186 WebGPU | Babylon 9.29 WebGL2 | Babylon 9.29 WebGPU |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1K | 1.89 | 2.77 | 1.33 | 1.25 | 1.76 | 2.75 | 4.14 | 5.75 |
+| 2K | 3.21 | 5.07 | 2.03 | 2.00 | 3.11 | 5.42 | 7.87 | 10.86 |
+| 3K | 4.50 | 7.36 | 3.14 | 2.66 | 4.35 | 9.33 | 11.02 | 18.19 |
+| 4K | 6.05 | 10.23 | 3.99 | 3.24 | 5.81 | 13.09 | 15.35 | 24.09 |
+| 5K | 8.02 | 13.11 | 9.28 | 4.17 | 9.32 | 17.40 | 20.22 | 31.08 |
+| 6K | 9.75 | 19.29 | 10.85 | 4.64 | 11.03 | 20.53 | 24.69 | 39.39 |
+| 7K | 11.54 | 19.44 | 12.17 | 5.36 | 12.73 | 24.58 | 29.18 | 46.87 |
+| 8K | 13.65 | 23.83 | 13.56 | 6.41 | 14.46 | 28.92 | 34.71 | 53.60 |
+| 9K | 15.22 | 26.83 | 15.19 | 7.06 | 16.28 | 33.66 | 39.52 | 60.57 |
+| 10K | 17.38 | 31.51 | 16.01 | 8.50 | 17.90 | 37.04 | 44.50 | 68.58 |
+| 11K | 19.39 | 33.75 | 17.49 | 9.42 | 19.51 | 41.05 | 50.32 | 76.39 |
+| 12K | 21.51 | 36.83 | 18.55 | 9.94 | 21.23 | 44.51 | 54.90 | 83.68 |
+| 13K | 23.89 | 41.10 | 19.71 | 11.21 | 22.90 | 48.71 | 60.60 | 91.84 |
+| 14K | 25.90 | 45.35 | 20.63 | 11.89 | 24.64 | 52.30 | 64.60 | 99.79 |
+| 15K | 28.50 | 48.58 | 21.52 | 12.75 | 26.36 | 57.58 | 69.34 | 105.63 |
+| 16K | 31.29 | 52.39 | 22.76 | 13.67 | 28.05 | 61.90 | 74.67 | 113.24 |
+| 17K | 33.04 | 56.78 | 23.88 | 14.43 | 29.78 | 65.97 | 80.21 | 198.29 |
+| 18K | 35.32 | 59.33 | 26.20 | 15.64 | 31.45 | 69.96 | 85.09 | 219.79 |
+| 19K | 38.27 | 63.65 | 27.51 | 17.06 | 33.23 | 74.29 | 89.98 | 240.08 |
+| 20K | 39.70 | 67.93 | 29.41 | 18.75 | 34.81 | 135.86 | 95.50 | 263.43 |
+
+- PlayCanvas 2.23.0 against 2.22.6 at 20K boxes: 1.35x faster on WebGL2 (39.70 to
+  29.41 ms) and 3.62x faster on WebGPU (67.93 to 18.75 ms).
+- The columns keep each engine's own draw order, so cross-engine numbers are not
+  like-for-like (see [Draw order](#draw-order)).
+- The full export, with median and min frame time and the draw calls each engine
+  submitted, is [`results/draw-calls-2026-10-01.txt`](results/draw-calls-2026-10-01.txt).
+
 ## Draw order
 
 The default is **engine default** order: nothing is overridden and every engine sorts
