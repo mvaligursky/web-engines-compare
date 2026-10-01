@@ -44,10 +44,15 @@ viewport 8x moves the results by only a few percent, so the test really is CPU-b
 
 ## Results
 
-Draw Call Performance on 2026-10-01, at the default settings: 100 unique materials
-(complex), 100 unique meshes, shadows on, engine default draw order, 5 warmup + 20
-measured frames per count. Chrome 154 on macOS, Apple M4 Max (WebGL2 through ANGLE on
-Metal, WebGPU on Metal), viewport 1261x899, pixel ratio 1, MSAA off.
+Draw Call Performance on 2026-10-01, on two machines, at the default settings: 100 unique
+materials (complex), 100 unique meshes, shadows on, engine default draw order, 5 warmup +
+20 measured frames per count, pixel ratio 1, MSAA off. Every box is drawn twice (forward
+and shadow pass), so 20K boxes is about 40K draw calls.
+
+| Machine | Hardware | Browser | Graphics | Viewport |
+| --- | --- | --- | --- | --- |
+| macOS | Apple M4 Max | Chrome 154 | WebGL2 through ANGLE on Metal, WebGPU on Metal | 1261x899 |
+| Windows | Intel Core i7-10700F 2.9 GHz, NVIDIA GeForce RTX 2070 | Chrome 154 | WebGL2 through ANGLE on Direct3D 11, WebGPU | 2022x1143 |
 
 | Columns | Engine version | Build |
 | --- | --- | --- |
@@ -56,10 +61,29 @@ Metal, WebGPU on Metal), viewport 1261x899, pixel ratio 1, MSAA off.
 | Three r186 | Three.js 0.186.1 | `three@0.186.1/build/three.module.js` (WebGL2), `three.webgpu.js` (WebGPU) |
 | Babylon 9.29 | Babylon.js 9.29.0 | `babylonjs@9.29.0/babylon.js` |
 
-![CPU frame time per engine and backend, 1K to 20K boxes](results/draw-calls-2026-10-01.png)
+### Overview
 
-CPU frame time, mean (ms), lower is better. Every box is drawn twice (forward and shadow
-pass), so 20K boxes is about 40K draw calls.
+The latest version of each engine, per graphics backend and machine.
+
+![Average CPU frame time per engine, WebGL2 and WebGPU, on macOS and Windows](results/overview-2026-10-01.png)
+
+Average CPU frame time (ms), lower is better: the mean frame time averaged over the 20 box
+counts, 1K to 20K.
+
+| Engine | macOS WebGL2 | macOS WebGPU | Windows WebGL2 | Windows WebGPU |
+| --- | ---: | ---: | ---: | ---: |
+| PlayCanvas 2.23.0 | 15.76 | 9.00 | 34.79 | 25.74 |
+| Three.js r186 | 18.44 | 42.24 | 39.85 | 91.87 |
+| Babylon.js 9.29 | 47.82 | 92.56 | 107.79 | 156.36 |
+
+The columns keep each engine's own draw order, so cross-engine numbers are not
+like-for-like (see [Draw order](#draw-order)).
+
+### macOS, Apple M4 Max
+
+![CPU frame time per engine and backend on macOS, 1K to 20K boxes](results/draw-calls-2026-10-01-macos.png)
+
+CPU frame time, mean (ms), lower is better.
 
 | Boxes | PC 2.22 WebGL2 | PC 2.22 WebGPU | PC 2.23 WebGL2 | PC 2.23 WebGPU | Three r186 WebGL2 | Three r186 WebGPU | Babylon 9.29 WebGL2 | Babylon 9.29 WebGPU |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -86,10 +110,42 @@ pass), so 20K boxes is about 40K draw calls.
 
 - PlayCanvas 2.23.0 against 2.22.6 at 20K boxes: 1.35x faster on WebGL2 (39.70 to
   29.41 ms) and 3.62x faster on WebGPU (67.93 to 18.75 ms).
-- The columns keep each engine's own draw order, so cross-engine numbers are not
-  like-for-like (see [Draw order](#draw-order)).
-- The full export, with median and min frame time and the draw calls each engine
-  submitted, is [`results/draw-calls-2026-10-01.txt`](results/draw-calls-2026-10-01.txt).
+- Full export, with median and min frame time and the draw calls each engine submitted:
+  [`results/draw-calls-2026-10-01-macos.txt`](results/draw-calls-2026-10-01-macos.txt).
+
+### Windows, Intel Core i7-10700F, NVIDIA GeForce RTX 2070
+
+![CPU frame time per engine and backend on Windows, 1K to 20K boxes](results/draw-calls-2026-10-01-windows.png)
+
+CPU frame time, mean (ms), lower is better.
+
+| Boxes | PC 2.22 WebGL2 | PC 2.22 WebGPU | PC 2.23 WebGL2 | PC 2.23 WebGPU | Three r186 WebGL2 | Three r186 WebGPU | Babylon 9.29 WebGL2 | Babylon 9.29 WebGPU |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1K | 5.76 | 8.49 | 5.20 | 4.01 | 4.48 | 10.65 | 11.52 | 15.43 |
+| 2K | 8.53 | 14.16 | 7.06 | 7.08 | 8.08 | 16.57 | 26.01 | 28.97 |
+| 3K | 12.89 | 21.02 | 9.48 | 8.61 | 11.59 | 24.99 | 31.35 | 43.61 |
+| 4K | 15.89 | 28.34 | 12.38 | 9.69 | 15.31 | 34.52 | 42.31 | 57.39 |
+| 5K | 20.80 | 36.20 | 15.79 | 12.31 | 19.04 | 42.39 | 47.87 | 72.37 |
+| 6K | 24.21 | 43.37 | 18.93 | 14.38 | 22.21 | 51.26 | 56.66 | 89.12 |
+| 7K | 28.46 | 51.00 | 22.63 | 16.50 | 26.33 | 58.60 | 65.39 | 102.77 |
+| 8K | 34.46 | 58.61 | 24.94 | 19.33 | 29.25 | 70.61 | 79.59 | 127.01 |
+| 9K | 38.94 | 64.39 | 28.42 | 21.99 | 32.57 | 75.91 | 107.66 | 136.04 |
+| 10K | 43.77 | 72.42 | 32.95 | 24.97 | 36.74 | 87.20 | 104.60 | 147.28 |
+| 11K | 48.70 | 80.01 | 37.63 | 27.01 | 40.14 | 96.20 | 110.97 | 161.08 |
+| 12K | 54.72 | 88.78 | 37.94 | 29.84 | 45.11 | 104.60 | 145.03 | 180.17 |
+| 13K | 57.88 | 97.15 | 41.19 | 30.44 | 49.23 | 112.30 | 147.71 | 196.14 |
+| 14K | 63.76 | 105.19 | 45.42 | 32.96 | 53.18 | 124.36 | 140.23 | 207.12 |
+| 15K | 67.74 | 111.07 | 49.36 | 35.71 | 57.33 | 134.41 | 169.60 | 220.10 |
+| 16K | 72.95 | 118.81 | 52.50 | 38.16 | 62.55 | 140.60 | 149.49 | 235.91 |
+| 17K | 80.93 | 129.01 | 56.64 | 41.04 | 66.71 | 148.82 | 167.47 | 260.79 |
+| 18K | 84.79 | 136.07 | 62.10 | 43.77 | 69.84 | 161.16 | 171.27 | 267.85 |
+| 19K | 86.57 | 143.16 | 65.91 | 47.04 | 72.75 | 165.37 | 184.41 | 278.55 |
+| 20K | 90.31 | 153.58 | 69.29 | 49.86 | 74.62 | 176.82 | 196.68 | 299.51 |
+
+- PlayCanvas 2.23.0 against 2.22.6 at 20K boxes: 1.30x faster on WebGL2 (90.31 to
+  69.29 ms) and 3.08x faster on WebGPU (153.58 to 49.86 ms).
+- Full export, with median and min frame time and the draw calls each engine submitted:
+  [`results/draw-calls-2026-10-01-windows.txt`](results/draw-calls-2026-10-01-windows.txt).
 
 ## Draw order
 
