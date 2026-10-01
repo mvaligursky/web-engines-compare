@@ -172,7 +172,7 @@ launch: only a fresh browser process fully resets the ordinal effect.
 ## Engine versions
 
 The PlayCanvas columns are the current release (2.23.0) and the previous one
-(2.22.6), next to Three.js r185 and Babylon.js 9.23.
+(2.22.6), next to Three.js r186 and Babylon.js 9.29.
 
 ### Measuring a local PlayCanvas branch
 

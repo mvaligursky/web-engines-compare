@@ -53,24 +53,24 @@ export const ENGINE_VERSIONS = [
         }
     },
     {
-        id: 'three-0.185.1',
+        id: 'three-0.186.1',
         engine: 'three',
-        label: 'Three.js r185',
-        shortLabel: 'Three r185',
+        label: 'Three.js r186',
+        shortLabel: 'Three r186',
         builds: {
             // three ships the WebGPU renderer in a separate build
-            webgl2: { kind: 'esm', url: 'https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.module.js' },
-            webgpu: { kind: 'esm', url: 'https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.webgpu.js' }
+            webgl2: { kind: 'esm', url: 'https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.js' },
+            webgpu: { kind: 'esm', url: 'https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.webgpu.js' }
         }
     },
     {
-        id: 'babylon-9.23.0',
+        id: 'babylon-9.29.0',
         engine: 'babylon',
-        label: 'Babylon.js 9.23',
-        shortLabel: 'Bab 9.23',
+        label: 'Babylon.js 9.29',
+        shortLabel: 'Bab 9.29',
         builds: {
-            webgl2: { kind: 'script', url: 'https://cdn.jsdelivr.net/npm/babylonjs@9.23.0/babylon.js', global: 'BABYLON' },
-            webgpu: { kind: 'script', url: 'https://cdn.jsdelivr.net/npm/babylonjs@9.23.0/babylon.js', global: 'BABYLON' }
+            webgl2: { kind: 'script', url: 'https://cdn.jsdelivr.net/npm/babylonjs@9.29.0/babylon.js', global: 'BABYLON' },
+            webgpu: { kind: 'script', url: 'https://cdn.jsdelivr.net/npm/babylonjs@9.29.0/babylon.js', global: 'BABYLON' }
         }
     }
 ];
